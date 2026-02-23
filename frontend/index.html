@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LandLedger - Nigeria Land Registry</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="logo">🏛️ LandLedger</div>
+    <div class="tagline">Verified Land Ownership on the Blockchain</div>
+    <button id="connectWallet">Connect Wallet</button>
+  </header>
+
+  <!-- Search Bar -->
+  <div class="search-container">
+    <input type="text" id="searchInput" placeholder="Search by location, parcel ID or owner address..."/>
+    <button id="searchBtn">Search</button>
+  </div>
+
+  <!-- Map -->
+  <div id="map"></div>
+
+  <!-- Parcel Detail Panel -->
+  <div id="parcelPanel" class="hidden">
+    <button id="closePanel">✕</button>
+    <h2 id="parcelTitle">Parcel Details</h2>
+    <div class="detail-row"><span>📍 Location</span><span id="parcelLocation">-</span></div>
+    <div class="detail-row"><span>📊 Status</span><span id="parcelStatus">-</span></div>
+    <div class="detail-row"><span>📐 Size</span><span id="parcelSize">-</span></div>
+    <div class="detail-row"><span>💰 Value</span><span id="parcelValue">-</span></div>
+    <div class="detail-row"><span>👤 Current Owner</span><span id="parcelOwner" class="wallet">-</span></div>
+    <div class="detail-row"><span>👥 Co-Owners</span><span id="parcelCoOwners">-</span></div>
+    <div class="detail-row"><span>⚖️ Disputes</span><span id="parcelDisputes">-</span></div>
+    <div class="detail-row"><span>🕓 Previous Owners</span><span id="parcelHistory">-</span></div>
+    <div id="documentSection" class="hidden">
+      <h3>📄 Land Documents</h3>
+      <p id="documentHash">-</p>
+    </div>
+    <div class="action-buttons">
+      <button id="requestBtn" class="btn-primary">Request to Purchase</button>
+      <button id="viewDocsBtn" class="btn-secondary hidden">View Documents</button>
+    </div>
+    <p id="statusMessage"></p>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
