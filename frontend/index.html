@@ -12,7 +12,7 @@
 
   <!-- Header -->
   <header>
-    <div class="logo">🏛️ LandLedger</div>
+    <img src="LandLedger-Logo.jpeg" alt="LandLedger" style="height:60px;vertical-align:middle;margin-right:8px;"/>
     <div class="tagline">Verified Land Ownership on the Blockchain</div>
     <button id="connectWallet">Connect Wallet</button>
   </header>
@@ -25,6 +25,20 @@
 
   <!-- Map -->
   <div id="map"></div>
+
+   <!-- Seller Dashboard -->
+  <div id="sellerDashboard" class="hidden" style="position:fixed;top:70px;right:20px;background:#1a1a2e;border:2px solid #f0c040;border-radius:12px;padding:16px;width:280px;z-index:1000;">
+    <h3 style="color:#f0c040;margin:0 0 6px 0;">👑 Seller Dashboard</h3>
+    <p style="color:#aaa;font-size:12px;margin:0;">Waiting for purchase requests on your 5 parcels...</p>
+  </div>
+
+  <!-- Seller Notification -->
+  <div id="sellerNotification" class="hidden" style="position:fixed;top:70px;right:20px;background:#1a1a2e;border:2px solid #f0c040;border-radius:12px;padding:20px;width:310px;z-index:2000;max-height:80vh;overflow-y:auto;">
+    <h3 style="color:#f0c040;margin:0 0 6px 0;">🔔 Purchase Requests</h3>
+    <p style="color:#fff;font-size:13px;margin:0 0 4px 0;"><strong>Parcel:</strong> <span id="sellerParcelName"></span></p>
+    <p style="color:#aaa;font-size:12px;margin:0 0 12px 0;"><span id="sellerBuyerCount"></span></p>
+    <div id="sellerRequestsList"></div>
+  </div>
 
   <!-- Parcel Detail Panel -->
   <div id="parcelPanel" class="hidden">
@@ -50,6 +64,7 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>
 
 </body>

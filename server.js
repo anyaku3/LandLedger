@@ -9,33 +9,41 @@ const io = new Server(server);
 
 const SELLER_WALLET = "0xecf32e35d8f35095516d8ef2bdd2a9514fde3886";
 
-// Serve frontend files
 app.use(express.static(path.join(__dirname, "frontend")));
 
-// Store active purchase requests
+// purchaseRequests[parcelId] = array of buyer requests
 let purchaseRequests = {};
-// Store parcel ownership (starts with defaults, updates on transfer)
 let parcelOwners = {};
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
-
-  // Send current state to newly connected user
   socket.emit("currentState", { purchaseRequests, parcelOwners });
 
   // Buyer locks escrow and sends purchase request
   socket.on("purchaseRequest", (data) => {
     const { parcelId, buyerWallet, offerAmount, parcelValue } = data;
-    const minRequired = parcelValue * 0.75;
+    const minRequired = Math.floor(parcelValue * 0.75);
 
     if (offerAmount < minRequired) {
       socket.emit("escrowRejected", {
-        message: `Minimum escrow required is ₦${minRequired.toLocaleString()} (75% of parcel value). Your offer: ₦${offerAmount.toLocaleString()}`
+        message: `Minimum escrow is ₦${minRequired.toLocaleString()} (75% of listed value). You offered ₦${offerAmount.toLocaleString()}.`
       });
       return;
     }
 
-    purchaseRequests[parcelId] = {
+    // Initialize array for this parcel if needed
+    if (!purchaseRequests[parcelId]) {
+      purchaseRequests[parcelId] = [];
+    }
+
+    // Check if this buyer already has a pending request
+    const existing = purchaseRequests[parcelId].find(r => r.buyerWallet.toLowerCase() === buyerWallet.toLowerCase());
+    if (existing) {
+      socket.emit("escrowRejected", { message: "You already have a pending request on this parcel." });
+      return;
+    }
+
+    const request = {
       buyerWallet,
       offerAmount,
       parcelValue,
@@ -43,36 +51,40 @@ io.on("connection", (socket) => {
       timestamp: new Date().toISOString()
     };
 
-    // Notify all connected clients (seller will see it)
-    io.emit("newPurchaseRequest", {
+    purchaseRequests[parcelId].push(request);
+
+    // Notify seller with full list of buyers for this parcel
+    io.emit("purchaseRequestsUpdated", {
       parcelId,
-      buyerWallet,
-      offerAmount,
-      parcelValue
+      requests: purchaseRequests[parcelId]
     });
 
     socket.emit("escrowLocked", {
-      message: `Escrow of ₦${offerAmount.toLocaleString()} locked. Waiting for seller to review your offer.`
+      message: `✅ Escrow of ₦${offerAmount.toLocaleString()} locked. Seller is reviewing your request.`
     });
 
-    console.log(`Purchase request: Parcel ${parcelId} | Buyer: ${buyerWallet} | Offer: ${offerAmount}`);
+    console.log(`New request: Parcel ${parcelId} | Buyer: ${buyerWallet} | Offer: ₦${offerAmount.toLocaleString()}`);
   });
 
-  // Seller accepts and sets agreed price
+  // Seller accepts ONE specific buyer and sets agreed price
   socket.on("sellerAccept", (data) => {
-    const { parcelId, agreedPrice, sellerWallet } = data;
+    const { parcelId, buyerWallet, agreedPrice, sellerWallet } = data;
 
     if (sellerWallet.toLowerCase() !== SELLER_WALLET.toLowerCase()) {
-      socket.emit("error", { message: "Unauthorized: Only the parcel owner can accept." });
+      socket.emit("error", { message: "Unauthorized." });
       return;
     }
 
-    const request = purchaseRequests[parcelId];
+    const requests = purchaseRequests[parcelId];
+    if (!requests) return;
+
+    const request = requests.find(r => r.buyerWallet.toLowerCase() === buyerWallet.toLowerCase());
     if (!request) return;
 
     request.status = "accepted";
     request.agreedPrice = agreedPrice;
 
+    // Notify the specific buyer
     io.emit("purchaseAccepted", {
       parcelId,
       agreedPrice,
@@ -80,44 +92,67 @@ io.on("connection", (socket) => {
       lockedAmount: request.offerAmount
     });
 
-    console.log(`Seller accepted: Parcel ${parcelId} | Agreed price: ${agreedPrice}`);
+    console.log(`Accepted: Parcel ${parcelId} | Buyer: ${buyerWallet} | Agreed: ₦${agreedPrice.toLocaleString()}`);
   });
 
-  // Seller rejects
+  // Seller rejects ONE specific buyer
   socket.on("sellerReject", (data) => {
-    const { parcelId, sellerWallet } = data;
+    const { parcelId, buyerWallet, sellerWallet } = data;
 
     if (sellerWallet.toLowerCase() !== SELLER_WALLET.toLowerCase()) {
       socket.emit("error", { message: "Unauthorized." });
       return;
     }
 
-    const request = purchaseRequests[parcelId];
-    if (!request) return;
+    if (!purchaseRequests[parcelId]) return;
 
-    request.status = "rejected";
+    purchaseRequests[parcelId] = purchaseRequests[parcelId].filter(
+      r => r.buyerWallet.toLowerCase() !== buyerWallet.toLowerCase()
+    );
+
     io.emit("purchaseRejected", {
       parcelId,
-      buyerWallet: request.buyerWallet,
-      message: "Seller rejected the offer. Your escrow has been released."
+      buyerWallet,
+      message: "Seller rejected your offer. Your escrow has been released."
     });
 
-    delete purchaseRequests[parcelId];
+    // Update seller's list
+    io.emit("purchaseRequestsUpdated", {
+      parcelId,
+      requests: purchaseRequests[parcelId]
+    });
   });
 
   // Buyer completes transfer
   socket.on("completeTransfer", (data) => {
     const { parcelId, buyerWallet } = data;
-    const request = purchaseRequests[parcelId];
-    if (!request || request.status !== "accepted") return;
+    if (!purchaseRequests[parcelId]) return;
 
-    // Update ownership
+    const request = purchaseRequests[parcelId].find(
+      r => r.buyerWallet.toLowerCase() === buyerWallet.toLowerCase() && r.status === "accepted"
+    );
+    if (!request) return;
+
+    // Record ownership transfer
     parcelOwners[parcelId] = {
       newOwner: buyerWallet,
       previousOwner: SELLER_WALLET,
       agreedPrice: request.agreedPrice,
       transferTime: new Date().toISOString()
     };
+
+    // Release escrow of all OTHER buyers (they lose this parcel)
+    const otherBuyers = purchaseRequests[parcelId].filter(
+      r => r.buyerWallet.toLowerCase() !== buyerWallet.toLowerCase()
+    );
+
+    otherBuyers.forEach(r => {
+      io.emit("purchaseRejected", {
+        parcelId,
+        buyerWallet: r.buyerWallet,
+        message: "This parcel was sold to another buyer. Your escrow has been released."
+      });
+    });
 
     io.emit("transferComplete", {
       parcelId,
@@ -132,17 +167,24 @@ io.on("connection", (socket) => {
 
   // Either party cancels
   socket.on("cancelTransaction", (data) => {
-    const { parcelId, cancelledBy } = data;
-    const request = purchaseRequests[parcelId];
-    if (!request) return;
+    const { parcelId, cancelledBy, buyerWallet } = data;
+    if (!purchaseRequests[parcelId]) return;
+
+    purchaseRequests[parcelId] = purchaseRequests[parcelId].filter(
+      r => r.buyerWallet.toLowerCase() !== buyerWallet.toLowerCase()
+    );
 
     io.emit("transactionCancelled", {
       parcelId,
       cancelledBy,
+      buyerWallet,
       message: "Transaction cancelled. Escrow released back to buyer."
     });
 
-    delete purchaseRequests[parcelId];
+    io.emit("purchaseRequestsUpdated", {
+      parcelId,
+      requests: purchaseRequests[parcelId]
+    });
   });
 
   socket.on("disconnect", () => {
@@ -154,4 +196,5 @@ const PORT = 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`LandLedger server running on http://localhost:${PORT}`);
   console.log(`Seller wallet: ${SELLER_WALLET}`);
+  console.log(`Contract: 0x13E8EF43891bc65eD714965E124FCD60CBA0ca32`);
 });
